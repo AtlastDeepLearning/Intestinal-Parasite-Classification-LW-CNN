@@ -10,10 +10,10 @@ This project tackles the challenge of detecting and classifying intestinal paras
 By leveraging **transfer learning** with **EfficientNetB0**, the model achieves **high accuracy** while staying lightweight and efficient.  
 
 **Target Classes:**
-- 🟢 *Ascaris lumbricoides* (Roundworm)  
-- 🟡 *Enterobius vermicularis* (Pinworm)  
-- 🔴 Hookworm eggs (*Ancylostoma duodenale*, *Necator americanus*)  
-- 🟣 *Trichuris trichiura* (Whipworm)  
+-  *Ascaris lumbricoides* (Roundworm)  
+-  *Enterobius vermicularis* (Pinworm)  
+-  Hookworm eggs (*Ancylostoma duodenale*, *Necator americanus*)  
+-  *Trichuris trichiura* (Whipworm)  
 
 ---
 
@@ -63,6 +63,6 @@ history = model.fit(
 - ✅ Macro F1-score: **0.97**  
 - ✅ Weighted Avg F1-score: **0.97**
 
-![Confusion Matrix](assets/confusion_matrix.png)
+![Confusion Matrix](confusion_matrix.png)
 
 
