@@ -22,6 +22,21 @@ Microscopic egg images were **resized to 224×224** (EfficientNetB0 input size).
 Images were first **loaded as grayscale**, then expanded to **3-channel RGB** for compatibility.  
 Pixel values were normalized to **[0,1]**.
 
+```sql
+dataset/
+├── train/
+│ ├── ascaris_lumbricoides/
+│ ├── enterobius_vermicularis/
+│ ├── hookworms/
+│ └── trichuris_trichiura/
+│
+└── val/
+├── ascaris_lumbricoides/
+├── enterobius_vermicularis/
+├── hookworms/
+└── trichuris_trichiura/
+```
+
 ## 🚀 Training Pipeline
 
 Key steps in training:
