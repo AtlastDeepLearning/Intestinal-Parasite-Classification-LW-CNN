@@ -1,118 +1,68 @@
-Intestinal-Parasite-Classification-LW-CNN
+# 🦠 Intestinal Parasite Classification – Lightweight CNN (EfficientNetB0)
 
-Image classification using a lightweight Convolutional Neural Network (EfficientNetB0 backbone) for intestinal parasite detection in microscopic images.
+A lightweight Convolutional Neural Network using **EfficientNetB0** for the classification of intestinal parasite eggs in microscopic images.  
+Designed for **accuracy, efficiency, and deployment on resource-constrained devices**.
 
-📌 Overview
+---
 
-This project implements a lightweight CNN based on EfficientNetB0 for classifying intestinal parasite eggs in microscopic stool images. The model is designed to be efficient, accurate, and suitable for deployment on limited-resource environments such as clinical labs or edge devices.
+## 📌 Overview
+This project tackles the challenge of detecting and classifying intestinal parasites from microscopic stool images.  
+By leveraging **transfer learning** with **EfficientNetB0**, the model achieves **high accuracy** while staying lightweight and efficient.  
 
-It supports 4 parasite categories:
+**Target Classes:**
+- 🟢 *Ascaris lumbricoides* (Roundworm)  
+- 🟡 *Enterobius vermicularis* (Pinworm)  
+- 🔴 Hookworm eggs (*Ancylostoma duodenale*, *Necator americanus*)  
+- 🟣 *Trichuris trichiura* (Whipworm)  
 
-Ascaris lumbricoides
+---
 
-Enterobius vermicularis
+## 📂 Dataset
+Microscopic egg images were **resized to 224×224** (EfficientNetB0 input size).  
+Images were first **loaded as grayscale**, then expanded to **3-channel RGB** for compatibility.  
+Pixel values were normalized to **[0,1]**.
 
-Hookworm eggs
+## 🚀 Training Pipeline
 
-Trichuris trichiura
+Key steps in training:
 
-📂 Dataset
+- **Data Augmentation** (rotation, zoom, shift, flips)  
+- **Grayscale → RGB preprocessing**  
+- **Transfer Learning** with EfficientNetB0  
+- **Fine-tuning** last 30 layers after initial training  
+- **Callbacks:** EarlyStopping, ReduceLROnPlateau, ModelCheckpoint  
 
-Microscopic images of parasite eggs with varied resolutions (1920x1080, 1344x1080, etc.)
-
-Images organized into train/validation/test directories:
-
-dataset/
-  train/
-    ascaris_lumbricoides/
-    enterobius_vermicularis/
-    hookworms/
-    trichuris_trichiura/
-  val/
-    ...
-  test/
-    ...
-
-⚙️ Requirements
-pip install tensorflow keras numpy pandas matplotlib scikit-learn opencv-python pillow
-
-
-(Optional for visualization/reporting)
-
-pip install seaborn reportlab
-
-🚀 Training
-
-Run the training script or notebook:
-
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
-
+### training loop
+```python
 checkpoint = ModelCheckpoint("efficientnet_parasite.h5", save_best_only=True, monitor="val_accuracy", mode="max")
 earlystop = EarlyStopping(patience=5, restore_best_weights=True)
 
 history = model.fit(
     train_gen_processed,
     validation_data=val_gen_processed,
-    epochs=EPOCHS,
+    epochs=30,
     callbacks=[checkpoint, earlystop],
     steps_per_epoch=train_gen.samples // BATCH_SIZE,
     validation_steps=val_gen.samples // BATCH_SIZE
 )
+```
+## 📊 Results
+
+**Final Test Set (120 images, 30 per class):**
+
+| Class        | Precision | Recall | F1-Score | Support |
+|--------------|-----------|--------|----------|---------|
+| 🟢 Ascaris   | 0.9091    | 1.0000 | 0.9524   | 30      |
+| 🟡 Enterobius| 0.9677    | 1.0000 | 0.9836   | 30      |
+| 🔴 Hookworms | 1.0000    | 0.9000 | 0.9474   | 30      |
+| 🟣 Trichuris | 1.0000    | 0.9667 | 0.9831   | 30      |
+
+**Overall Performance:**
+
+- ✅ Accuracy: **96.7%**  
+- ✅ Macro F1-score: **0.97**  
+- ✅ Weighted Avg F1-score: **0.97**
+
+![Confusion Matrix](assets/confusion_matrix.png)
 
 
-The model can also be fine-tuned by unfreezing the last few layers of EfficientNet.
-
-🧪 Evaluation
-
-You can evaluate the model on a test set and generate classification reports, confusion matrices, and F1 scores:
-
-from sklearn.metrics import classification_report, confusion_matrix
-import seaborn as sns
-import matplotlib.pyplot as plt
-
-# Predict
-y_pred = model.predict(test_gen, verbose=1)
-y_pred_classes = np.argmax(y_pred, axis=1)
-
-# Metrics
-print(classification_report(test_gen.classes, y_pred_classes, target_names=class_names))
-
-# Confusion Matrix
-cm = confusion_matrix(test_gen.classes, y_pred_classes)
-sns.heatmap(cm, annot=True, fmt="d", xticklabels=class_names, yticklabels=class_names)
-plt.show()
-
-📊 Results
-
-Example small test set (40 images):
-
-Accuracy: 75%
-Macro Precision: 0.81
-Macro Recall: 0.75
-Macro F1: 0.72
-
-
-(Update with full evaluation metrics once trained on the full dataset)
-
-📁 Project Structure
-Intestinal-Parasite-Classification-LW-CNN/
-├── dataset/               # Train/Val/Test images
-├── notebooks/             # Jupyter notebooks for training & evaluation
-├── efficientnet_parasite.h5 # Saved best model
-└── README.md
-
-🔮 Future Work
-
-Extend to object detection (YOLOv8 / EfficientDet) to handle images with multiple parasites.
-
-Optimize for mobile/edge deployment (TFLite, ONNX).
-
-Improve dataset balance and augmentation.
-
-🤝 Contributing
-
-Contributions are welcome! Open an issue or submit a PR.
-
-📜 License
-
-[Add your license here]
