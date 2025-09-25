@@ -1,26 +1,31 @@
 import tensorflow as tf
 import numpy as np
+import threading
+import traceback
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from PIL import Image, ImageTk
+import cv2
 from tensorflow.keras.applications.efficientnet import preprocess_input
 from tensorflow.keras.applications import EfficientNetB0
 from tensorflow.keras import layers, models
 
-# Path to your trained model
-MODEL_PATH = "efficientnet_parasite_final.h5"  
+# ---------------------------
+# Config
+# ---------------------------
+MODEL_PATH = "efficientnet_parasite_final.h5"
 IMG_SIZE = (224, 224)
 
-# Class names (4 classes, since your model was trained on 4 parasites)
 CLASS_NAMES = [
     "ascaris_lumbricoides",
     "enterobius_vermicularis",
     "hookworm",
     "trichuris_trichiura",
 ]
-
 NUM_CLASSES = len(CLASS_NAMES)
 
-
 # ---------------------------
-# Model Definition + Loading
+# Model Handling
 # ---------------------------
 def build_model(input_shape=(224, 224, 3), num_classes=NUM_CLASSES):
     base = EfficientNetB0(include_top=False, weights=None, input_shape=input_shape, pooling="avg")
@@ -31,11 +36,9 @@ def build_model(input_shape=(224, 224, 3), num_classes=NUM_CLASSES):
 
 def load_model(model_path: str):
     try:
-        # Try loading full model first
         model = tf.keras.models.load_model(model_path, compile=False)
         return model
     except Exception as e:
-        # Fallback: rebuild architecture and load weights
         if "Shape mismatch" in str(e) or "expects shape" in str(e):
             model = build_model(input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3), num_classes=NUM_CLASSES)
             model.load_weights(model_path)
@@ -44,42 +47,30 @@ def load_model(model_path: str):
 
 
 # ---------------------------
-# Image Preprocessing
+# Image Preprocessing + Prediction
 # ---------------------------
 def preprocess_image_inference(image_path: str) -> np.ndarray:
-    # Load as grayscale, resize, then expand to 3 channels (RGB)
     img = tf.keras.preprocessing.image.load_img(
         image_path, target_size=IMG_SIZE, color_mode="grayscale"
     )
-    img_array = tf.keras.preprocessing.image.img_to_array(img)  # (H, W, 1)
-    img_array = np.repeat(img_array, 3, axis=-1)                # (H, W, 3)
-    img_array = preprocess_input(img_array)                     # EfficientNet preprocessing
-    img_array = np.expand_dims(img_array, axis=0)               # (1, H, W, 3)
+    img_array = tf.keras.preprocessing.image.img_to_array(img)
+    img_array = np.repeat(img_array, 3, axis=-1)
+    img_array = preprocess_input(img_array)
+    img_array = np.expand_dims(img_array, axis=0)
     return img_array
 
 
-# ---------------------------
-# Prediction
-# ---------------------------
 def predict_image(model, image_path: str, top_k: int = 3):
     batch = preprocess_image_inference(image_path)
-    preds = model.predict(batch, verbose=0)[0]  # shape (NUM_CLASSES,)
-
-    # Get top-k predictions
+    preds = model.predict(batch, verbose=0)[0]
     top_indices = preds.argsort()[-top_k:][::-1]
     results = [(CLASS_NAMES[i], float(preds[i])) for i in top_indices]
     return results
 
 
 # ---------------------------
-# Simple Tkinter GUI
+# GUI with Camera + Touch Controls
 # ---------------------------
-import threading
-import traceback
-import tkinter as tk
-from tkinter import filedialog, messagebox
-from PIL import Image, ImageTk
-
 _gui_model = None
 _gui_lock = threading.Lock()
 
@@ -92,87 +83,123 @@ def _ensure_model_loaded():
     return _gui_model
 
 
-def launch_gui():
-    root = tk.Tk()
-    root.title("Parasite Classifier")
-    root.geometry("600x500")
+class ParasiteApp:
+    def __init__(self, root):
+        self.root = root
+        root.title("Parasite Classifier")
+        root.geometry("800x600")
 
-    selected_path_var = tk.StringVar(value="No image selected")
+        self.selected_path = None
+        self.captured_image = None
+        self.crop_rect = None
+        self.crop_start = None
 
-    # Preview area
-    preview_label = tk.Label(root, text="Preview", width=50, height=15, relief=tk.SUNKEN)
-    preview_label.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+        self.results_var = tk.StringVar(value="Top predictions will appear here")
 
-    # Results area
-    results_var = tk.StringVar(value="Top predictions will appear here")
-    results_label = tk.Label(root, textvariable=results_var, justify=tk.LEFT, anchor="w")
-    results_label.pack(padx=10, pady=(0, 10), fill=tk.X)
+        # Preview area
+        self.preview_label = tk.Label(root, text="Preview", width=80, height=25, relief=tk.SUNKEN, bg="black")
+        self.preview_label.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
 
-    # Path label
-    path_label = tk.Label(root, textvariable=selected_path_var, anchor="w")
-    path_label.pack(padx=10, pady=(0, 10), fill=tk.X)
+        # Results
+        results_label = tk.Label(root, textvariable=self.results_var, justify=tk.LEFT, anchor="w", font=("Arial", 14))
+        results_label.pack(padx=10, pady=(0, 10), fill=tk.X)
 
-    def choose_image():
-        try:
-            path = filedialog.askopenfilename(
-                title="Choose an image",
-                filetypes=[
-                    ("Image files", "*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff"),
-                    ("All files", "*.*"),
-                ],
-            )
-            if not path:
-                return
-            selected_path_var.set(path)
+        # Buttons
+        btn_frame = tk.Frame(root)
+        btn_frame.pack(padx=10, pady=10, fill=tk.X)
 
-            # Show thumbnail preview
-            img = Image.open(path)
-            img.thumbnail((400, 400))
-            tk_img = ImageTk.PhotoImage(img)
-            preview_label.configure(image=tk_img)
-            preview_label.image = tk_img  # keep reference
+        tk.Button(btn_frame, text="Open Camera", command=self.open_camera).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Capture", command=self.capture_image).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Crop", command=self.enable_crop).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Predict", command=self.run_prediction).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Quit", command=root.destroy).pack(side=tk.RIGHT, padx=5)
 
-            # Run prediction in background to keep UI responsive
-            def run_prediction():
-                try:
-                    results_var.set("Loading model and predicting...")
-                    model = _ensure_model_loaded()
-                    results = predict_image(model, path, top_k=3)
-                    formatted = "\n".join([f"{name}: {score:.4f}" for name, score in results])
-                    results_var.set(formatted)
-                except Exception:
-                    traceback.print_exc()
-                    messagebox.showerror("Error", "Failed to predict. See console for details.")
+        # Crop bindings
+        self.preview_label.bind("<ButtonPress-1>", self.start_crop)
+        self.preview_label.bind("<B1-Motion>", self.draw_crop)
+        self.preview_label.bind("<ButtonRelease-1>", self.finish_crop)
 
-            threading.Thread(target=run_prediction, daemon=True).start()
-        except Exception as ex:
-            traceback.print_exc()
-            messagebox.showerror("Error", str(ex))
+        self.cap = None  # OpenCV video capture
 
-    btn_frame = tk.Frame(root)
-    btn_frame.pack(padx=10, pady=10, fill=tk.X)
+    def open_camera(self):
+        if self.cap is None:
+            self.cap = cv2.VideoCapture(0)
+        self.show_frame()
 
-    choose_btn = tk.Button(btn_frame, text="Choose Image", command=choose_image)
-    choose_btn.pack(side=tk.LEFT)
+    def show_frame(self):
+        if self.cap is not None:
+            ret, frame = self.cap.read()
+            if ret:
+                self.captured_image = frame
+                cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                img = Image.fromarray(cv2image)
+                img.thumbnail((600, 400))
+                imgtk = ImageTk.PhotoImage(image=img)
+                self.preview_label.imgtk = imgtk
+                self.preview_label.configure(image=imgtk)
+            self.root.after(30, self.show_frame)
 
-    quit_btn = tk.Button(btn_frame, text="Quit", command=root.destroy)
-    quit_btn.pack(side=tk.RIGHT)
+    def capture_image(self):
+        if self.captured_image is not None:
+            cv2.imwrite("captured_image.jpg", self.captured_image)
+            self.selected_path = "captured_image.jpg"
+            self.results_var.set("Image captured, ready for crop/predict")
 
-    root.mainloop()
+    def enable_crop(self):
+        self.results_var.set("Draw rectangle on image to crop")
+
+    def start_crop(self, event):
+        if self.selected_path:
+            self.crop_start = (event.x, event.y)
+            self.crop_rect = None
+
+    def draw_crop(self, event):
+        if self.crop_start:
+            self.crop_rect = (self.crop_start[0], self.crop_start[1], event.x, event.y)
+            # Draw rectangle overlay (not permanent)
+            img = Image.open(self.selected_path)
+            img.thumbnail((600, 400))
+            overlay = ImageTk.PhotoImage(img)
+            self.preview_label.configure(image=overlay)
+            self.preview_label.image = overlay
+
+    def finish_crop(self, event):
+        if self.crop_rect and self.selected_path:
+            x1, y1, x2, y2 = self.crop_rect
+            img = Image.open(self.selected_path)
+            img.thumbnail((600, 400))
+            cropped = img.crop((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
+            cropped.save("cropped_image.jpg")
+            self.selected_path = "cropped_image.jpg"
+
+            tk_img = ImageTk.PhotoImage(cropped)
+            self.preview_label.configure(image=tk_img)
+            self.preview_label.image = tk_img
+            self.results_var.set("Cropped image ready")
+
+    def run_prediction(self):
+        if not self.selected_path:
+            messagebox.showwarning("No Image", "Please capture or choose an image first.")
+            return
+
+        def task():
+            try:
+                self.results_var.set("Loading model and predicting...")
+                model = _ensure_model_loaded()
+                results = predict_image(model, self.selected_path, top_k=3)
+                formatted = "\n".join([f"{name}: {score:.4f}" for name, score in results])
+                self.results_var.set(formatted)
+            except Exception:
+                traceback.print_exc()
+                messagebox.showerror("Error", "Failed to predict. See console for details.")
+
+        threading.Thread(target=task, daemon=True).start()
 
 
 # ---------------------------
-# CLI Main (optional quick test)
+# Run
 # ---------------------------
 if __name__ == "__main__":
-    # Launch the GUI by default. You can still run CLI quick test by
-    # commenting the next line and uncommenting the CLI block below.
-    launch_gui()
-
-    # CLI quick test example (disabled by default):
-    # image_path = "C:/Users/Atlast/Downloads/testing/testing/ascaris.png"  
-    # model = load_model(MODEL_PATH)
-    # results = predict_image(model, image_path, top_k=3)
-    # print("Top predictions:")
-    # for name, score in results:
-    #     print(f"  {name}: {score:.4f}")
+    root = tk.Tk()
+    app = ParasiteApp(root)
+    root.mainloop()
