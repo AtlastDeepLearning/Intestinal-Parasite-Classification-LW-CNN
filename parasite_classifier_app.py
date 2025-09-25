@@ -10,6 +10,9 @@ from tensorflow.keras.applications.efficientnet import preprocess_input
 from tensorflow.keras.applications import EfficientNetB0
 from tensorflow.keras import layers, models
 
+# 🔹 Add Picamera2
+from picamera2 import Picamera2
+
 # ---------------------------
 # Config
 # ---------------------------
@@ -77,9 +80,9 @@ class CropperApp:
         self.crop_box_size = 224    # fixed 224x224 crop box
         self.cropped_image = None
 
-        # Canvas: fill most of the screen
-        self.canvas = tk.Canvas(root, bg="lightgray", width=640, height=380)
-        self.canvas.pack(pady=5, expand=True)
+        # Canvas
+        self.canvas = tk.Canvas(root, bg="lightgray", width=500, height=400)
+        self.canvas.pack(pady=10, expand=True)
 
         self.canvas.bind("<Button-1>", self.start_crop)
         self.canvas.bind("<B1-Motion>", self.update_crop)
@@ -87,10 +90,10 @@ class CropperApp:
 
         # Results label
         self.results_var = tk.StringVar(value="Results will appear here")
-        tk.Label(root, textvariable=self.results_var, anchor="w", justify="left", font=("Arial", 12)).pack(fill="x", pady=5)
+        tk.Label(root, textvariable=self.results_var, anchor="w", justify="left").pack(fill="x", pady=5)
 
-        # Buttons at the bottom
-        btn_frame = tk.Frame(root, bg="white", height=80)
+        # Buttons
+        btn_frame = tk.Frame(root, bg="white", height=60)
         btn_frame.pack(side="bottom", fill="x")
 
         open_btn = tk.Button(btn_frame, text="📂 Open", command=self.open_image, height=2, width=12)
@@ -109,23 +112,29 @@ class CropperApp:
             self.show_image(self.current_image)
 
     def capture_image(self):
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            messagebox.showerror("Error", "No camera found!")
-            return
-        ret, frame = cap.read()
-        cap.release()
-        if ret:
-            self.current_image = frame
+        """Capture image using Raspberry Pi HQ Camera"""
+        try:
+            picam2 = Picamera2()
+            config = picam2.create_still_configuration(main={"size": (1920, 1080)})
+            picam2.configure(config)
+            picam2.start()
+            frame = picam2.capture_array()
+            picam2.close()
+
+            # Convert RGB (from camera) -> BGR (for OpenCV)
+            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
+            self.current_image = frame_bgr
             self.show_image(self.current_image)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Camera error: {e}")
 
     def show_image(self, cv_img):
         """Convert OpenCV image to Tkinter Canvas"""
         cv_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(cv_img)
-        canvas_w = self.canvas.winfo_width()
-        canvas_h = self.canvas.winfo_height()
-        img = img.resize((canvas_w, canvas_h))
+        img = img.resize((500, 400))
         self.tk_img_ref = ImageTk.PhotoImage(img)
         self.canvas.delete("all")
         self.canvas.create_image(0, 0, anchor="nw", image=self.tk_img_ref)
@@ -189,7 +198,7 @@ if __name__ == "__main__":
 
     root = tk.Tk()
     root.title("Parasite Classifier")
-    root.geometry("800x480")  # Fixed for touchscreen
+    root.geometry("800x480")  # Fits Pi touchscreen
 
     app = CropperApp(root, model)
 
