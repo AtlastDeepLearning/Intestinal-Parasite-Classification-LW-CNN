@@ -77,9 +77,9 @@ class CropperApp:
         self.crop_box_size = 224    # fixed 224x224 crop box
         self.cropped_image = None
 
-        # Canvas
-        self.canvas = tk.Canvas(root, bg="lightgray", width=500, height=400)
-        self.canvas.pack(pady=10, expand=True)
+        # Canvas: fill most of the screen
+        self.canvas = tk.Canvas(root, bg="lightgray", width=640, height=380)
+        self.canvas.pack(pady=5, expand=True)
 
         self.canvas.bind("<Button-1>", self.start_crop)
         self.canvas.bind("<B1-Motion>", self.update_crop)
@@ -87,10 +87,10 @@ class CropperApp:
 
         # Results label
         self.results_var = tk.StringVar(value="Results will appear here")
-        tk.Label(root, textvariable=self.results_var, anchor="w", justify="left").pack(fill="x", pady=5)
+        tk.Label(root, textvariable=self.results_var, anchor="w", justify="left", font=("Arial", 12)).pack(fill="x", pady=5)
 
-        # Buttons
-        btn_frame = tk.Frame(root, bg="white", height=60)
+        # Buttons at the bottom
+        btn_frame = tk.Frame(root, bg="white", height=80)
         btn_frame.pack(side="bottom", fill="x")
 
         open_btn = tk.Button(btn_frame, text="📂 Open", command=self.open_image, height=2, width=12)
@@ -123,7 +123,9 @@ class CropperApp:
         """Convert OpenCV image to Tkinter Canvas"""
         cv_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(cv_img)
-        img = img.resize((500, 400))
+        canvas_w = self.canvas.winfo_width()
+        canvas_h = self.canvas.winfo_height()
+        img = img.resize((canvas_w, canvas_h))
         self.tk_img_ref = ImageTk.PhotoImage(img)
         self.canvas.delete("all")
         self.canvas.create_image(0, 0, anchor="nw", image=self.tk_img_ref)
@@ -187,7 +189,7 @@ if __name__ == "__main__":
 
     root = tk.Tk()
     root.title("Parasite Classifier")
-    root.geometry("800x480")  # Fits Pi touchscreen
+    root.geometry("800x480")  # Fixed for touchscreen
 
     app = CropperApp(root, model)
 
