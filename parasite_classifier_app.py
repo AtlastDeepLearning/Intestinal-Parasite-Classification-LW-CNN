@@ -1,24 +1,25 @@
-import tensorflow as tf
-import numpy as np
-import threading
-import traceback
+import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from PIL import Image, ImageTk
 import cv2
+import numpy as np
+import threading
+import traceback
+import os
+import tensorflow as tf
 from tensorflow.keras.applications.efficientnet import preprocess_input
 from tensorflow.keras.applications import EfficientNetB0
 from tensorflow.keras import layers, models
 
-# 🔹 Add Picamera2
-from picamera2 import Picamera2
+# ---------------------------
+# Config & Setup
+# ---------------------------
+ctk.set_appearance_mode("Dark")  # Modes: "System" (standard), "Dark", "Light"
+ctk.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
 
-# ---------------------------
-# Config
-# ---------------------------
-MODEL_PATH = "efficientnet_parasite_final.h5"
+MODEL_PATH = "models/efficientnet_parasite_final.h5"
 IMG_SIZE = (224, 224)
-
 CLASS_NAMES = [
     "ascaris_lumbricoides",
     "enterobius_vermicularis",
@@ -27,8 +28,16 @@ CLASS_NAMES = [
 ]
 NUM_CLASSES = len(CLASS_NAMES)
 
+# Check for Camera
+try:
+    from picamera2 import Picamera2
+    CAMERA_AVAILABLE = True
+except ImportError:
+    CAMERA_AVAILABLE = False
+    print("⚠️ Picamera2 not found. Using Mock Camera mode.")
+
 # ---------------------------
-# Model Handling
+# Model Functions
 # ---------------------------
 def build_model(input_shape=(224, 224, 3), num_classes=NUM_CLASSES):
     base = EfficientNetB0(include_top=False, weights=None, input_shape=input_shape, pooling="avg")
@@ -36,108 +45,183 @@ def build_model(input_shape=(224, 224, 3), num_classes=NUM_CLASSES):
     model = models.Model(inputs=base.input, outputs=outputs)
     return model
 
-def load_model(model_path: str):
+def load_trained_model(model_path: str):
+    if not os.path.exists(model_path):
+        messagebox.showerror("Error", f"Model not found at {model_path}")
+        return None
     try:
         model = tf.keras.models.load_model(model_path, compile=False)
+        print("✅ Model loaded successfully.")
         return model
     except Exception as e:
-        if "Shape mismatch" in str(e) or "expects shape" in str(e):
-            model = build_model(input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3), num_classes=NUM_CLASSES)
+        print(f"⚠️ Load failed, attempting to build and load weights: {e}")
+        try:
+            model = build_model()
             model.load_weights(model_path)
             return model
-        raise
+        except Exception as e2:
+            messagebox.showerror("Error", f"Failed to load model: {e2}")
+            return None
 
-# ---------------------------
-# Image Preprocessing + Prediction
-# ---------------------------
-def preprocess_cv_image(cv_img: np.ndarray) -> np.ndarray:
-    """ Preprocess cropped OpenCV image for EfficientNet """
+def predict_cv_image(model, cv_img: np.ndarray, top_k: int = 3):
+    # Preprocess
     img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
     img = cv2.resize(img, IMG_SIZE)
     img_array = np.array(img, dtype=np.float32)
-    img_array = preprocess_input(img_array)
+    img_array = preprocess_input(img_array) # EfficientNet preprocessing [0, 255] -> scaled
     img_array = np.expand_dims(img_array, axis=0)
-    return img_array
-
-def predict_cv_image(model, cv_img: np.ndarray, top_k: int = 3):
-    batch = preprocess_cv_image(cv_img)
-    preds = model.predict(batch, verbose=0)[0]
+    
+    # Predict
+    preds = model.predict(img_array, verbose=0)[0]
     top_indices = preds.argsort()[-top_k:][::-1]
     results = [(CLASS_NAMES[i], float(preds[i])) for i in top_indices]
     return results
 
 # ---------------------------
-# Tkinter App
+# Main App Class
 # ---------------------------
-class CropperApp:
-    def __init__(self, root, model):
-        self.root = root
-        self.model = model
-        self.current_image = None   # OpenCV image (BGR)
+class ParasiteApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+
+        # Window Setup
+        self.title("Parasite AI Classifier")
+        self.geometry("800x480")
+        self.attributes("-fullscreen", True)
+        
+        # Key Bindings
+        self.bind("<Escape>", lambda e: self.destroy()) # Exit on Esc
+
+        # Load Model
+        self.model = load_trained_model(MODEL_PATH)
+
+        # State
+        self.current_image = None # BGR OpenCV image
         self.tk_img_ref = None
         self.rect_id = None
         self.start_x, self.start_y = None, None
-        self.crop_box_size = 224    # fixed 224x224 crop box
+        self.crop_box_size = 224
         self.cropped_image = None
 
-        # Canvas
-        self.canvas = tk.Canvas(root, bg="lightgray", width=500, height=400)
-        self.canvas.pack(pady=10, expand=True)
+        # Layout Configuration
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
 
+        self.setup_sidebar()
+        self.setup_main_area()
+
+    def setup_sidebar(self):
+        self.sidebar = ctk.CTkFrame(self, width=200, corner_radius=0)
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+        self.sidebar.grid_rowconfigure(5, weight=1) # Spacer
+
+        # Title
+        self.logo_label = ctk.CTkLabel(self.sidebar, text="Parasite AI", font=ctk.CTkFont(size=24, weight="bold"))
+        self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10))
+
+        # Buttons
+        self.btn_open = ctk.CTkButton(self.sidebar, text="📂 Open Image", command=self.open_image)
+        self.btn_open.grid(row=1, column=0, padx=20, pady=10)
+
+        self.btn_capture = ctk.CTkButton(self.sidebar, text="📸 Capture (Cam)", command=self.capture_image)
+        self.btn_capture.grid(row=2, column=0, padx=20, pady=10)
+
+        self.btn_classify = ctk.CTkButton(self.sidebar, text="🤖 Classify Crop", command=self.classify_image, fg_color="green", hover_color="darkgreen")
+        self.btn_classify.grid(row=3, column=0, padx=20, pady=10)
+
+        # Spacer
+        
+        # Exit Button
+        self.btn_exit = ctk.CTkButton(self.sidebar, text="❌ Exit", command=self.destroy, fg_color="red", hover_color="darkred")
+        self.btn_exit.grid(row=6, column=0, padx=20, pady=20)
+
+    def setup_main_area(self):
+        self.main_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
+        self.main_frame.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
+        self.main_frame.grid_rowconfigure(0, weight=1)
+        self.main_frame.grid_columnconfigure(0, weight=1)
+
+        # Canvas for Image
+        # Note: CustomTkinter doesn't have a Canvas, so we use standard tk.Canvas but style it
+        self.canvas_frame = ctk.CTkFrame(self.main_frame)
+        self.canvas_frame.grid(row=0, column=0, sticky="nsew", pady=(0, 20))
+        
+        self.canvas = tk.Canvas(self.canvas_frame, bg="#2b2b2b", highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True, padx=2, pady=2)
+        
         self.canvas.bind("<Button-1>", self.start_crop)
         self.canvas.bind("<B1-Motion>", self.update_crop)
         self.canvas.bind("<ButtonRelease-1>", self.finish_crop)
 
-        # Results label
-        self.results_var = tk.StringVar(value="Results will appear here")
-        tk.Label(root, textvariable=self.results_var, anchor="w", justify="left").pack(fill="x", pady=5)
+        # Results Area
+        self.results_label = ctk.CTkLabel(self.main_frame, text="Load an image and select an area to classify.", 
+                                          font=ctk.CTkFont(size=18), wraplength=500)
+        self.results_label.grid(row=1, column=0, sticky="ew")
 
-        # Buttons
-        btn_frame = tk.Frame(root, bg="white", height=60)
-        btn_frame.pack(side="bottom", fill="x")
-
-        open_btn = tk.Button(btn_frame, text="📂 Open", command=self.open_image, height=2, width=12)
-        open_btn.pack(side="left", expand=True, padx=5, pady=10)
-
-        capture_btn = tk.Button(btn_frame, text="📸 Capture", command=self.capture_image, height=2, width=12)
-        capture_btn.pack(side="left", expand=True, padx=5, pady=10)
-
-        classify_btn = tk.Button(btn_frame, text="🤖 Classify", command=self.classify_image, height=2, width=12)
-        classify_btn.pack(side="right", expand=True, padx=5, pady=10)
-
+    # ---------------------------
+    # Logic
+    # ---------------------------
     def open_image(self):
         file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.jpg *.png *.jpeg *.bmp")])
         if file_path:
             self.current_image = cv2.imread(file_path)
             self.show_image(self.current_image)
+            self.results_label.configure(text="Image loaded. Drag to crop.")
 
     def capture_image(self):
-        """Capture image using Raspberry Pi HQ Camera"""
+        if not CAMERA_AVAILABLE:
+            # Mock Camera for testing
+            self.current_image = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(self.current_image, "Mock Camera", (200, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            self.show_image(self.current_image)
+            self.results_label.configure(text="Mock Camera Image Captured.")
+            return
+
         try:
+            # Real Camera Logic
             picam2 = Picamera2()
             config = picam2.create_still_configuration(main={"size": (1920, 1080)})
             picam2.configure(config)
             picam2.start()
             frame = picam2.capture_array()
             picam2.close()
-
-            # Convert RGB (from camera) -> BGR (for OpenCV)
+            
             frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-
             self.current_image = frame_bgr
             self.show_image(self.current_image)
-
+            self.results_label.configure(text="Photo Captured. Drag to crop.")
+            
         except Exception as e:
-            messagebox.showerror("Error", f"Camera error: {e}")
+            messagebox.showerror("Camera Error", str(e))
 
     def show_image(self, cv_img):
-        """Convert OpenCV image to Tkinter Canvas"""
-        cv_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
-        img = Image.fromarray(cv_img)
-        img = img.resize((500, 400))
-        self.tk_img_ref = ImageTk.PhotoImage(img)
+        # Resize to fit canvas while maintaining aspect ratio
+        h, w = cv_img.shape[:2]
+        canvas_w = self.canvas.winfo_width()
+        canvas_h = self.canvas.winfo_height()
+        
+        if canvas_w < 10 or canvas_h < 10: # Fallback if canvas not rendered yet
+            canvas_w, canvas_h = 500, 400
+
+        scale = min(canvas_w/w, canvas_h/h)
+        new_w, new_h = int(w * scale), int(h * scale)
+        
+        img_resized = cv2.resize(cv_img, (new_w, new_h))
+        img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
+        
+        self.tk_img_ref = ImageTk.PhotoImage(Image.fromarray(img_rgb))
         self.canvas.delete("all")
-        self.canvas.create_image(0, 0, anchor="nw", image=self.tk_img_ref)
+        
+        # Center image
+        x_offset = (canvas_w - new_w) // 2
+        y_offset = (canvas_h - new_h) // 2
+        
+        self.canvas.create_image(x_offset, y_offset, anchor="nw", image=self.tk_img_ref)
+        
+        # Store scale/offsets for cropping mapping
+        self.img_scale = scale
+        self.img_offset_x = x_offset
+        self.img_offset_y = y_offset
 
     def start_crop(self, event):
         self.start_x, self.start_y = event.x, event.y
@@ -149,57 +233,71 @@ class CropperApp:
         if self.start_x and self.start_y:
             if self.rect_id:
                 self.canvas.delete(self.rect_id)
-
-            # Force crop to 224x224 box
+            
+            # Fixed size box (scaled to display)
+            # We want a 224x224 crop from the ORIGINAL image
+            # So on canvas, that size is 224 * scale
+            
+            box_display_size = int(self.crop_box_size * getattr(self, 'img_scale', 1.0))
+            
             x1, y1 = self.start_x, self.start_y
-            x2, y2 = x1 + self.crop_box_size, y1 + self.crop_box_size
-            self.rect_id = self.canvas.create_rectangle(x1, y1, x2, y2, outline="red", width=2)
+            x2, y2 = x1 + box_display_size, y1 + box_display_size
+            
+            self.rect_id = self.canvas.create_rectangle(x1, y1, x2, y2, outline="cyan", width=2)
 
     def finish_crop(self, event):
-        if self.current_image is None:
+        if self.current_image is None or not hasattr(self, 'img_scale'):
             return
-
-        # Map canvas coords back to image coords
-        h, w, _ = self.current_image.shape
-        canvas_w = self.canvas.winfo_width()
-        canvas_h = self.canvas.winfo_height()
-
-        x1, y1 = self.start_x, self.start_y
-        x2, y2 = x1 + self.crop_box_size, y1 + self.crop_box_size
-
-        scale_x = w / canvas_w
-        scale_y = h / canvas_h
-
-        ix1, iy1 = int(x1 * scale_x), int(y1 * scale_y)
-        ix2, iy2 = int(x2 * scale_x), int(y2 * scale_y)
-
-        self.cropped_image = self.current_image[iy1:iy2, ix1:ix2]
-        if self.cropped_image.size > 0:
-            self.show_image(self.cropped_image)
+            
+        # Calculate coordinates in original image
+        box_display_size = int(self.crop_box_size * self.img_scale)
+        
+        x1_canvas = self.start_x
+        y1_canvas = self.start_y
+        
+        # Map back to image coordinates
+        # (canvas_x - offset) / scale = image_x
+        ix1 = int((x1_canvas - self.img_offset_x) / self.img_scale)
+        iy1 = int((y1_canvas - self.img_offset_y) / self.img_scale)
+        
+        ix2 = ix1 + self.crop_box_size
+        iy2 = iy1 + self.crop_box_size
+        
+        # Clip to bounds
+        h, w = self.current_image.shape[:2]
+        ix1 = max(0, min(ix1, w))
+        iy1 = max(0, min(iy1, h))
+        ix2 = max(0, min(ix2, w))
+        iy2 = max(0, min(iy2, h))
+        
+        if ix2 > ix1 and iy2 > iy1:
+            self.cropped_image = self.current_image[iy1:iy2, ix1:ix2]
+            self.results_label.configure(text="Area selected. Ready to classify.")
 
     def classify_image(self):
         if self.cropped_image is None:
-            messagebox.showwarning("Warning", "No cropped image available!")
+            messagebox.showwarning("Warning", "Please select an area (crop) first!")
             return
+            
+        if self.model is None:
+             messagebox.showerror("Error", "Model not loaded!")
+             return
 
         try:
-            results = predict_cv_image(self.model, self.cropped_image, top_k=3)
-            formatted = "\n".join([f"{name}: {score:.4f}" for name, score in results])
-            self.results_var.set(formatted)
-        except Exception:
+            results = predict_cv_image(self.model, self.cropped_image)
+            
+            # Format results
+            top_class, top_score = results[0]
+            text = f"Result: {top_class}\nConfidence: {top_score:.2%}"
+            
+            # Color code based on confidence
+            color = "green" if top_score > 0.8 else "orange" if top_score > 0.5 else "red"
+            self.results_label.configure(text=text, text_color=color)
+            
+        except Exception as e:
             traceback.print_exc()
-            messagebox.showerror("Error", "Classification failed. See console for details.")
+            messagebox.showerror("Error", f"Classification failed: {e}")
 
-# ---------------------------
-# Main
-# ---------------------------
 if __name__ == "__main__":
-    model = load_model(MODEL_PATH)
-
-    root = tk.Tk()
-    root.title("Parasite Classifier")
-    root.geometry("800x480")  # Fits Pi touchscreen
-
-    app = CropperApp(root, model)
-
-    root.mainloop()
+    app = ParasiteApp()
+    app.mainloop()
