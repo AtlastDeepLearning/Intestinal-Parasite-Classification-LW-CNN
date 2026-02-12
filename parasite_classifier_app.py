@@ -63,11 +63,11 @@ class CameraManager:
                 print("Standard OpenCV opened but returned empty frame.")
 
         # Method 2: GStreamer Pipeline (Optimized for Libcamera)
-        # libcamerasrc -> appsink
+        # Using 640x480 for better compatibility and speed
         print("Trying GStreamer pipeline...")
         gst_pipe = (
-            "libcamerasrc ! video/x-raw, width=1920, height=1080, framerate=30/1 ! "
-            "videoconvert ! videoscale ! video/x-raw, format=BGR ! appsink"
+            "libcamerasrc ! video/x-raw, width=640, height=480, framerate=30/1 ! "
+            "videoconvert ! video/x-raw, format=BGR ! appsink"
         )
         cap = cv2.VideoCapture(gst_pipe, cv2.CAP_GSTREAMER)
         if cap.isOpened():
@@ -93,36 +93,44 @@ def load_trained_model(model_path: str):
     if not os.path.exists(model_path):
         messagebox.showerror("Error", f"Model not found at {model_path}")
         return None
+        
+    # Attempt 1: Load entire model (Architecture + Weights)
+    # This is the most robust way for .h5 files
     try:
+        print(f"Attempting to load model from {model_path}...")
         model = tf.keras.models.load_model(model_path, compile=False)
-        print("✅ Model loaded successfully.")
+        print("✅ Model loaded successfully using load_model().")
         return model
-    except Exception as e:
-        print(f"⚠️ Load failed, attempting to build and load weights: {e}")
+    except Exception as e_load:
+        print(f"⚠️ load_model() failed: {e_load}")
+        
+        # Attempt 2: Build & Load Weights (Fallback)
+        try:
+            print("Attempting to build architecture and load weights...")
+            # Try the Sequential (Nested) approach first as it matches the "2 layers" error
+            base = EfficientNetB0(include_top=False, weights=None, input_shape=(224, 224, 3), pooling="avg")
+            model = models.Sequential([
+                base,
+                layers.Dense(NUM_CLASSES, activation="softmax")
+            ])
+            model.build((None, 224, 224, 3))
+            model.load_weights(model_path)
+            print("✅ Weights loaded via Sequential fallback.")
+            return model
+        except Exception as e_seq:
+            print(f"⚠️ Sequential build failed: {e_seq}")
+            
+            # Attempt 3: Flat functional (Legacy)
             try:
-                # 1. Try Functional (Current approach)
                 model = build_model()
                 model.load_weights(model_path)
-                print("✅ Weights loaded via Functional build.")
+                print("✅ Weights loaded via Functional fallback.")
                 return model
-            except Exception as e_functional:
-                print(f"⚠️ Functional load failed: {e_functional}")
-                # 2. Try Sequential (Backbone + Head) - "2 layers" issue
-                try:
-                    base = EfficientNetB0(include_top=False, weights=None, input_shape=(224, 224, 3), pooling="avg")
-                    model = models.Sequential([
-                        base,
-                        layers.Dense(NUM_CLASSES, activation="softmax")
-                    ])
-                    model.build((None, 224, 224, 3))
-                    model.load_weights(model_path)
-                    print("✅ Weights loaded via Sequential fallback.")
-                    return model
-                except Exception as e_sequential:
-                    err_msg = f"Failed to load model.\nFunctional: {e_functional}\nSequential: {e_sequential}"
-                    print(err_msg)
-                    messagebox.showerror("Error", err_msg)
-                    return None
+            except Exception as e_func:
+                err_msg = f"Failed to load model.\nload_model: {e_load}\nSequential: {e_seq}\nFunctional: {e_func}"
+                print(err_msg)
+                messagebox.showerror("Error", err_msg)
+                return None
 
 def predict_cv_image(model, cv_img: np.ndarray, top_k: int = 3):
     # Preprocess
