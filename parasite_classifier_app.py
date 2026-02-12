@@ -62,14 +62,29 @@ class CameraManager:
             else:
                 print("Standard OpenCV opened but returned empty frame.")
 
-        # Method 2: GStreamer Pipeline (Optimized for Libcamera)
-        # Using 640x480 for better compatibility and speed
-        print("Trying GStreamer pipeline...")
-        gst_pipe = (
-            "libcamerasrc ! video/x-raw, width=640, height=480, framerate=30/1 ! "
-            "videoconvert ! video/x-raw, format=BGR ! appsink"
-        )
+        # Method 2: GStreamer Pipeline (Simplified)
+        # Try generic capture, let GStreamer negotiate
+        print("Trying GStreamer pipeline (Simple)...")
+        gst_pipe = "libcamerasrc ! videoconvert ! appsink"
         cap = cv2.VideoCapture(gst_pipe, cv2.CAP_GSTREAMER)
+        if cap.isOpened():
+            ret, frame = cap.read()
+            cap.release()
+            if ret and frame is not None and frame.size > 0:
+                print("Capture successful via GStreamer.")
+                return True, frame
+        
+        # Method 3: V4L2 Explicit
+        print("Trying V4L2 explicit...")
+        cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+        if cap.isOpened():
+            ret, frame = cap.read()
+            cap.release()
+            if ret and frame:
+                 return True, frame
+
+        print("All camera methods failed.")
+        return False, None
         if cap.isOpened():
             ret, frame = cap.read()
             cap.release()
@@ -93,44 +108,56 @@ def load_trained_model(model_path: str):
     if not os.path.exists(model_path):
         messagebox.showerror("Error", f"Model not found at {model_path}")
         return None
-        
-    # Attempt 1: Load entire model (Architecture + Weights)
-    # This is the most robust way for .h5 files
+    
+    print(f"Loading weights from {model_path}...")
+    
+    # Strategy: ALWAYS build architecture first, then load weights.
+    # This avoids Keras version mismatch issues (BatchNormalization deserialization error).
+    
+    error_log = []
+    
+    # Try 1: Sequential (Backbone + Head)
+    # This matches the "Found 2 saved layers" structure.
     try:
-        print(f"Attempting to load model from {model_path}...")
-        model = tf.keras.models.load_model(model_path, compile=False)
-        print("✅ Model loaded successfully using load_model().")
+        print("Building Sequential model...")
+        base = EfficientNetB0(include_top=False, weights=None, input_shape=(224, 224, 3), pooling="avg")
+        model = models.Sequential([
+            base,
+            layers.Dense(NUM_CLASSES, activation="softmax")
+        ])
+        model.build((None, 224, 224, 3))
+        model.load_weights(model_path)
+        print("✅ Weights loaded via Sequential build.")
         return model
-    except Exception as e_load:
-        print(f"⚠️ load_model() failed: {e_load}")
-        
-        # Attempt 2: Build & Load Weights (Fallback)
-        try:
-            print("Attempting to build architecture and load weights...")
-            # Try the Sequential (Nested) approach first as it matches the "2 layers" error
-            base = EfficientNetB0(include_top=False, weights=None, input_shape=(224, 224, 3), pooling="avg")
-            model = models.Sequential([
-                base,
-                layers.Dense(NUM_CLASSES, activation="softmax")
-            ])
-            model.build((None, 224, 224, 3))
-            model.load_weights(model_path)
-            print("✅ Weights loaded via Sequential fallback.")
-            return model
-        except Exception as e_seq:
-            print(f"⚠️ Sequential build failed: {e_seq}")
-            
-            # Attempt 3: Flat functional (Legacy)
-            try:
-                model = build_model()
-                model.load_weights(model_path)
-                print("✅ Weights loaded via Functional fallback.")
-                return model
-            except Exception as e_func:
-                err_msg = f"Failed to load model.\nload_model: {e_load}\nSequential: {e_seq}\nFunctional: {e_func}"
-                print(err_msg)
-                messagebox.showerror("Error", err_msg)
-                return None
+    except Exception as e:
+        print(f"Sequential load failed: {e}")
+        error_log.append(f"Sequential: {e}")
+
+    # Try 2: Functional (Flat)
+    try:
+        print("Building Functional model...")
+        model = build_model()
+        model.load_weights(model_path)
+        print("✅ Weights loaded via Functional build.")
+        return model
+    except Exception as e:
+        print(f"Functional load failed: {e}")
+        error_log.append(f"Functional: {e}")
+
+    # Try 3: Full load_model (Last resort - prone to version errors)
+    try:
+        print("Attempting full load_model...")
+        model = tf.keras.models.load_model(model_path, compile=False)
+        print("✅ Model loaded via load_model.")
+        return model
+    except Exception as e:
+        print(f"load_model failed: {e}")
+        error_log.append(f"load_model: {e}")
+
+    # Failed all
+    err_str = "\n".join(error_log)
+    messagebox.showerror("Error", f"Could not load model.\n{err_str}")
+    return None
 
 def predict_cv_image(model, cv_img: np.ndarray, top_k: int = 3):
     # Preprocess
