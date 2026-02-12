@@ -18,7 +18,7 @@ sudo apt-get install -y python3-opencv python3-pil.imagetk python3-numpy \
     gstreamer1.0-plugins-bad gstreamer1.0-libcamera
 
 echo "Installing Python Libraries..."
-pip3 install customtkinter tensorflow --break-system-packages
+pip3 install "numpy<2" customtkinter tensorflow --break-system-packages
 
 # Create .desktop file
 cat > "$DESKTOP_FILE" <<EOF
