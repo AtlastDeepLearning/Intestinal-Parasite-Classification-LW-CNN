@@ -99,13 +99,30 @@ def load_trained_model(model_path: str):
         return model
     except Exception as e:
         print(f"⚠️ Load failed, attempting to build and load weights: {e}")
-        try:
-            model = build_model()
-            model.load_weights(model_path)
-            return model
-        except Exception as e2:
-            messagebox.showerror("Error", f"Failed to load model: {e2}")
-            return None
+            try:
+                # 1. Try Functional (Current approach)
+                model = build_model()
+                model.load_weights(model_path)
+                print("✅ Weights loaded via Functional build.")
+                return model
+            except Exception as e_functional:
+                print(f"⚠️ Functional load failed: {e_functional}")
+                # 2. Try Sequential (Backbone + Head) - "2 layers" issue
+                try:
+                    base = EfficientNetB0(include_top=False, weights=None, input_shape=(224, 224, 3), pooling="avg")
+                    model = models.Sequential([
+                        base,
+                        layers.Dense(NUM_CLASSES, activation="softmax")
+                    ])
+                    model.build((None, 224, 224, 3))
+                    model.load_weights(model_path)
+                    print("✅ Weights loaded via Sequential fallback.")
+                    return model
+                except Exception as e_sequential:
+                    err_msg = f"Failed to load model.\nFunctional: {e_functional}\nSequential: {e_sequential}"
+                    print(err_msg)
+                    messagebox.showerror("Error", err_msg)
+                    return None
 
 def predict_cv_image(model, cv_img: np.ndarray, top_k: int = 3):
     # Preprocess
