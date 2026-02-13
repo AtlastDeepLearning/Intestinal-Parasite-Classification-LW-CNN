@@ -14,6 +14,12 @@ if ! dpkg -s python3-venv &> /dev/null; then
 fi
 
 # 2. Create Venv
+# Check for broken venv (dir exists but no python binary)
+if [ -d "$ENV_DIR" ] && [ ! -f "$ENV_DIR/bin/python3" ]; then
+    echo "⚠️  Found broken virtual environment (missing binaries). Recreating..."
+    rm -rf "$ENV_DIR"
+fi
+
 # We use --system-site-packages so we can access apt-installed packages like python3-opencv
 if [ ! -d "$ENV_DIR" ]; then
     echo "creating virtual environment in $ENV_DIR..."
