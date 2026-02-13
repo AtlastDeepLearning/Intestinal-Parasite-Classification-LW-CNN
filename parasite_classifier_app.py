@@ -81,7 +81,7 @@ class CameraManager:
             ret, frame = cap.read()
             cap.release()
             if ret and frame:
-                 return True, frame
+                return True, frame
 
         print("All camera methods failed.")
         return False, None
@@ -111,53 +111,35 @@ def load_trained_model(model_path: str):
     
     print(f"Loading weights from {model_path}...")
     
-    # Strategy: ALWAYS build architecture first, then load weights.
-    # This avoids Keras version mismatch issues (BatchNormalization deserialization error).
+    # Strategy: Prioritize full load_model since the file contains the architecture.
     
-    error_log = []
-    
-    # Try 1: Sequential (Backbone + Head)
-    # This matches the "Found 2 saved layers" structure.
-    try:
-        print("Building Sequential model...")
-        base = EfficientNetB0(include_top=False, weights=None, input_shape=(224, 224, 3), pooling="avg")
-        model = models.Sequential([
-            base,
-            layers.Dense(NUM_CLASSES, activation="softmax")
-        ])
-        model.build((None, 224, 224, 3))
-        model.load_weights(model_path)
-        print("✅ Weights loaded via Sequential build.")
-        return model
-    except Exception as e:
-        print(f"Sequential load failed: {e}")
-        error_log.append(f"Sequential: {e}")
-
-    # Try 2: Functional (Flat)
-    try:
-        print("Building Functional model...")
-        model = build_model()
-        model.load_weights(model_path)
-        print("✅ Weights loaded via Functional build.")
-        return model
-    except Exception as e:
-        print(f"Functional load failed: {e}")
-        error_log.append(f"Functional: {e}")
-
-    # Try 3: Full load_model (Last resort - prone to version errors)
     try:
         print("Attempting full load_model...")
+        # compile=False is safer for inference to avoid custom loss/optimizer issues
         model = tf.keras.models.load_model(model_path, compile=False)
         print("✅ Model loaded via load_model.")
         return model
-    except Exception as e:
-        print(f"load_model failed: {e}")
-        error_log.append(f"load_model: {e}")
-
-    # Failed all
-    err_str = "\n".join(error_log)
-    messagebox.showerror("Error", f"Could not load model.\n{err_str}")
-    return None
+    except Exception as e_load:
+        print(f"load_model failed: {e_load}")
+        
+        # Fallback: Try building architecture manually (only if load_model fails)
+        try:
+            print("Fallback: Building Sequential model...")
+            base = EfficientNetB0(include_top=False, weights=None, input_shape=(224, 224, 3), pooling="avg")
+            model = models.Sequential([
+                base,
+                layers.Dense(NUM_CLASSES, activation="softmax")
+            ])
+            model.build((None, 224, 224, 3))
+            model.load_weights(model_path)
+            print("✅ Weights loaded via Sequential fallback.")
+            return model
+        except Exception as e_seq:
+            print(f"Sequential fallback failed: {e_seq}")
+            
+            err_msg = f"Model Load Error:\n1. load_model: {e_load}\n2. Sequential: {e_seq}"
+            messagebox.showerror("Error", err_msg)
+            return None
 
 def predict_cv_image(model, cv_img: np.ndarray, top_k: int = 3):
     # Preprocess
