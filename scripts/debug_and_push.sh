@@ -14,8 +14,8 @@ echo "----------------------------------------" >> "$LOG_FILE"
 # 1. Check if venv exists
 if [ ! -f "$VENV_PYTHON" ]; then
     echo "❌ Virtual environment not found at $VENV_PYTHON" | tee -a "$LOG_FILE"
-    echo "   Running setup_env.sh..." | tee -a "$LOG_FILE"
-    bash scripts/setup_env.sh >> "$LOG_FILE" 2>&1
+    echo "   Running install_clean.sh..." | tee -a "$LOG_FILE"
+    bash scripts/install_clean.sh >> "$LOG_FILE" 2>&1
 fi
 
 # 2. Run the App and capture ALL output
