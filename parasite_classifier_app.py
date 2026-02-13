@@ -114,35 +114,30 @@ def load_trained_model(model_path: str):
     
     print(f"Loading weights from {model_path}...")
     
-    # Strategy: Prioritize full load_model since the file contains the architecture.
+    # Strategy: Build architecture manually and load weights.
+    # This bypasses the "BatchNormalization could not be deserialized" error 
+    # which happens when loading Keras 2 models in Keras 3.
     
     try:
-        print("Attempting full load_model...")
-        # compile=False is safer for inference to avoid custom loss/optimizer issues
-        model = tf.keras.models.load_model(model_path, compile=False)
-        print("✅ Model loaded via load_model.")
-        return model
-    except Exception as e_load:
-        print(f"load_model failed: {e_load}")
+        print("Building model architecture...")
+        # Reconstruct the exact architecture used in training
+        base = EfficientNetB0(include_top=False, weights=None, input_shape=(224, 224, 3), pooling="avg")
+        outputs = layers.Dense(NUM_CLASSES, activation="softmax")(base.output)
+        model = models.Model(inputs=base.input, outputs=outputs)
         
-        # Fallback: Try building architecture manually (only if load_model fails)
-        try:
-            print("Fallback: Building Sequential model...")
-            base = EfficientNetB0(include_top=False, weights=None, input_shape=(224, 224, 3), pooling="avg")
-            model = models.Sequential([
-                base,
-                layers.Dense(NUM_CLASSES, activation="softmax")
-            ])
-            model.build((None, 224, 224, 3))
-            model.load_weights(model_path)
-            print("✅ Weights loaded via Sequential fallback.")
-            return model
-        except Exception as e_seq:
-            print(f"Sequential fallback failed: {e_seq}")
-            
-            err_msg = f"Model Load Error:\n1. load_model: {e_load}\n2. Sequential: {e_seq}"
-            messagebox.showerror("Error", err_msg)
-            return None
+        # Build with input shape to ensure weights can be loaded
+        model.build((None, 224, 224, 3))
+        
+        print("Loading weights...")
+        model.load_weights(model_path)
+        print("✅ Weights loaded successfully.")
+        return model
+        
+    except Exception as e:
+        print(f"Weight load failed: {e}")
+        error_msg = f"Failed to load model:\n{e}\n\nTry re-training the model if this persists."
+        messagebox.showerror("Error", error_msg)
+        return None
 
 def predict_cv_image(model, cv_img: np.ndarray, top_k: int = 3):
     # Preprocess
