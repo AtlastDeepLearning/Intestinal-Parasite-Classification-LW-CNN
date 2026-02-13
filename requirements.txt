@@ -1,5 +1,5 @@
 customtkinter
 opencv-python
 pillow
-numpy
+numpy<2
 tensorflow
