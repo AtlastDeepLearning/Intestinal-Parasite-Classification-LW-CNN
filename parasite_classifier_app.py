@@ -10,9 +10,22 @@ import threading
 import traceback
 import os
 import tensorflow as tf
-from tensorflow.keras.applications.efficientnet import preprocess_input
-from tensorflow.keras.applications import EfficientNetB0
-from tensorflow.keras import layers, models
+print(f"DEBUG: TensorFlow Version: {tf.__version__}")
+
+# Flexible Keras Import (Handles TF 2.x vs TF 2.16+ / Keras 3)
+try:
+    from tensorflow.keras.applications.efficientnet import preprocess_input
+    from tensorflow.keras.applications import EfficientNetB0
+    from tensorflow.keras import layers, models
+    print("DEBUG: Using tensorflow.keras")
+except ImportError:
+    print("DEBUG: tensorflow.keras not found, trying standalone keras...")
+    import keras
+    from keras.applications.efficientnet import preprocess_input
+    from keras.applications import EfficientNetB0
+    from keras import layers, models
+    print("DEBUG: Using standalone keras")
+
 import time
 
 # ---------------------------
