@@ -132,11 +132,16 @@ def load_trained_model(model_path: str):
     # which happens when loading Keras 2 models in Keras 3.
     
     try:
-        print("Building model architecture...")
-        # Reconstruct the exact architecture used in training
+        print("Building model architecture (Sequential)...")
+        # Reconstruct as Sequential to match "Found 2 saved layers" structure
+        # Layer 1: EfficientNetB0 (treated as single unit)
+        # Layer 2: Dense Output
         base = EfficientNetB0(include_top=False, weights=None, input_shape=(224, 224, 3), pooling="avg")
-        outputs = layers.Dense(NUM_CLASSES, activation="softmax")(base.output)
-        model = models.Model(inputs=base.input, outputs=outputs)
+        
+        model = models.Sequential([
+            base,
+            layers.Dense(NUM_CLASSES, activation="softmax")
+        ])
         
         # Build with input shape to ensure weights can be loaded
         model.build((None, 224, 224, 3))
