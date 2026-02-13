@@ -2,7 +2,8 @@
 
 # Get directory of this script
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
-APP_DIR=$(dirname "$SCRIPT_DIR")
+# Since this script is in the root, the script dir IS the app dir
+APP_DIR="$SCRIPT_DIR"
 VENV_DIR="$APP_DIR/venv"
 
 # Check if venv exists
