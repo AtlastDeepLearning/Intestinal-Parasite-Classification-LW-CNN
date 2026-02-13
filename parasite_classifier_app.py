@@ -1,3 +1,5 @@
+import os
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox

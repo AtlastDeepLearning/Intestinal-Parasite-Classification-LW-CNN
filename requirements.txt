@@ -2,4 +2,4 @@ customtkinter
 opencv-python
 pillow
 numpy<2
-tensorflow
+tensorflow<2.16
