@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e  # Exit immediately if a command exits with a non-zero status.
 
 # Define environment directory
 ENV_DIR="venv"
@@ -21,25 +22,21 @@ else
     echo "✅ Virtual environment already exists."
 fi
 
-# 3. Activate and Install
-source $ENV_DIR/bin/activate
+# 3. Install Requirements using EXPLICIT venv pip
+# We avoid 'source activate' in scripts as it triggers 'externally-managed' easier
+VENV_PIP="$ENV_DIR/bin/pip"
 
-echo "📦 Installing Requirements in venv..."
+echo "📦 Installing Requirements using $VENV_PIP..."
 
-# IMPORTANT: On Raspberry Pi Bookworm, we might need to rely on apt for heavy packages
-# but inside a venv, pip is allowed.
-
-# Upgrade pip inside venv
-pip install --upgrade pip
+# Upgrade pip inside venv (with break-system-packages just in case)
+"$VENV_PIP" install --upgrade pip --break-system-packages
 
 # Install dependencies
-# We use 'customtkinter' and 'tensorflow' which are best from pip
-# We exclude system packages that are better installed via apt (opencv, pilots) if they are in requirements
 if [ -f "requirements.txt" ]; then
-    pip install -r requirements.txt
+    "$VENV_PIP" install -r requirements.txt --break-system-packages
 else
     echo "⚠️ requirements.txt not found. Installing defaults..."
-    pip install "numpy<2" customtkinter tensorflow
+    "$VENV_PIP" install "numpy<2" customtkinter tensorflow --break-system-packages
 fi
 
 echo "✅ Environment Setup Complete."
