@@ -105,6 +105,7 @@ def build_model(input_shape=(224, 224, 3), num_classes=NUM_CLASSES):
     return model
 
 def load_trained_model(model_path: str):
+    print(f"DEBUG: Starting load_trained_model with path: {model_path}")
     if not os.path.exists(model_path):
         messagebox.showerror("Error", f"Model not found at {model_path}")
         return None
