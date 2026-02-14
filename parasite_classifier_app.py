@@ -104,10 +104,10 @@ class CameraManager:
             ret, frame = cap.read()
             cap.release()
             if ret and frame is not None and frame.size > 0:
-                print("Capture successful via GStreamer.")
+                print("Capture successful via V4L2 explicit.")
                 return True, frame
         
-        print("GStreamer failed.")
+        print("All camera methods failed.")
         return False, None
 
 # ---------------------------
@@ -243,6 +243,9 @@ class ParasiteApp(ctk.CTk):
                                           fg_color="green", hover_color="darkgreen", font=btn_font, height=btn_height)
         self.btn_classify.grid(row=3, column=0, padx=20, pady=15, sticky="ew")
 
+        self.btn_upload = ctk.CTkButton(self.sidebar, text="📤 Upload", command=self.upload_image, font=btn_font, height=btn_height)
+        self.btn_upload.grid(row=4, column=0, padx=20, pady=15, sticky="ew")
+
         # Instructions
         self.lbl_instr = ctk.CTkLabel(self.sidebar, text="1. Select Image\n2. Drag Box\n3. Classify\n[ESC to Exit]", 
                                       text_color="gray", font=lbl_font)
@@ -302,6 +305,18 @@ class ParasiteApp(ctk.CTk):
                 self.after(0, self._on_capture_fail)
         
         threading.Thread(target=_capture, daemon=True).start()
+
+    def upload_image(self):
+        file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.jpg *.png *.jpeg *.bmp")])
+        if file_path:
+            # Read image
+            img = cv2.imread(file_path)
+            if img is not None:
+                self.current_image = img
+                self.show_image(self.current_image)
+                self.results_label.configure(text="Image Uploaded. Drag box to classify.")
+            else:
+                messagebox.showerror("Error", "Could not read image file.")
 
     def _on_capture_success(self, frame):
         self.current_image = frame
