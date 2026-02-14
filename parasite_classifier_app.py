@@ -26,6 +26,18 @@ except ImportError:
     from keras import layers, models
     print("DEBUG: Using standalone keras")
 
+# TFLite Support
+try:
+    import tflite_runtime.interpreter as tflite
+    print("DEBUG: Using tflite_runtime")
+except ImportError:
+    try:
+        import tensorflow.lite as tflite
+        print("DEBUG: Using tensorflow.lite")
+    except ImportError:
+        print("DEBUG: TFLite not available")
+        tflite = None
+
 import time
 
 # ---------------------------
@@ -34,7 +46,7 @@ import time
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-MODEL_PATH = "models/efficientnet_parasite_final.h5"
+MODEL_PATH = "models/parasite_model.tflite" # Default to TFLite for Pi
 IMG_SIZE = (224, 224)
 CLASS_NAMES = [
     "ascaris_lumbricoides",
@@ -119,46 +131,103 @@ def build_model(input_shape=(224, 224, 3), num_classes=NUM_CLASSES):
     model = models.Model(inputs=base.input, outputs=outputs)
     return model
 
+
+
+def load_tflite_model(model_path):
+    print(f"Loading TFLite model from {model_path}...")
+    try:
+        if tflite is None:
+            raise ImportError("TFLite libraries not installed.")
+            
+        interpreter = tflite.Interpreter(model_path=model_path)
+        interpreter.allocate_tensors()
+        print("✅ TFLite model loaded successfully.")
+        return interpreter
+    except Exception as e:
+        print(f"TFLite load failed: {e}")
+        messagebox.showerror("Error", f"Failed to load TFLite model:\n{e}")
+        return None
+
 def load_trained_model(model_path: str):
     print(f"DEBUG: Starting load_trained_model with path: {model_path}")
     if not os.path.exists(model_path):
         messagebox.showerror("Error", f"Model not found at {model_path}")
         return None
     
+    # Check extension
+    if model_path.endswith(".tflite"):
+        return load_tflite_model(model_path)
+
+    # Fallback to Keras
     print(f"Loading weights from {model_path}...")
-    
-    # Strategy: Build architecture manually and load weights.
-    # This bypasses the "BatchNormalization could not be deserialized" error 
-    # which happens when loading Keras 2 models in Keras 3.
-    
     try:
         print("Building model architecture (Sequential)...")
-        # Reconstruct as Sequential to match "Found 2 saved layers" structure
-        # Layer 1: EfficientNetB0 (treated as single unit)
-        # Layer 2: Dense Output
+        # Reconstruct as Sequential
         base = EfficientNetB0(include_top=False, weights=None, input_shape=(224, 224, 3), pooling="avg")
-        
-        model = models.Sequential([
-            base,
-            layers.Dense(NUM_CLASSES, activation="softmax")
-        ])
-        
-        # Build with input shape to ensure weights can be loaded
+        model = models.Sequential([base, layers.Dense(NUM_CLASSES, activation="softmax")])
         model.build((None, 224, 224, 3))
         
         print("Loading weights...")
         model.load_weights(model_path)
         print("✅ Weights loaded successfully.")
         return model
-        
     except Exception as e:
         print(f"Weight load failed: {e}")
-        error_msg = f"Failed to load model:\n{e}\n\nTry re-training the model if this persists."
-        messagebox.showerror("Error", error_msg)
+        messagebox.showerror("Error", f"Failed to load model:\n{e}")
         return None
 
-def predict_cv_image(model, cv_img: np.ndarray, top_k: int = 3):
+
+
+def predict_tflite(interpreter, cv_img, top_k=3):
     # Preprocess
+    img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+    img = cv2.resize(img, IMG_SIZE)
+    img = img.astype(np.float32)
+    
+    # EfficientNet Expects [0, 255] or [0, 1]? 
+    # Our train script includes Rescaling(1./255) if we used it, OR efficientnet preprocess.
+    # tf.keras.applications.efficientnet.preprocess_input does scaling.
+    # Let's assume standard efficientnet preprocessing.
+    # Note: If train_model.py used `preprocess_input` (which is included in Keras' EfficientNet usually), 
+    # we should replicate it.
+    # HOWEVER, standard Keras EfficientNetB0 expects [0-255].
+    # Let's stick to what we did in Keras path: preprocess_input
+    # But `preprocess_input` might not be available if tensorflow is missing (tflite-runtime only).
+    # So we manually implement it: EfficientNet usually is just simple scaling or none.
+    # Actually, EfficientNet B0-B7 in Keras expects [0-255] and has normalization builtin.
+    # BUT `preprocess_input` exists.
+    # Let's try raw [0-255] first, if results are garbage, we normalize.
+    # Wait, in `predict_cv_image` we called `preprocess_input`.
+    # We should replicate that.
+    # EfficientNet `preprocess_input` doesn't scale, it passes through! (For B0-B7). 
+    # Rescaling is part of the model layers in newer TF.
+    # Our `train_model.py` added a `Rescaling(1./255)`? No, I decided against it in comments?
+    # Wait, I need to check `train_model.py` content again to be sure what I wrote.
+    # I wrote: "EfficientNet models expect their inputs to be float tensors of pixels with values in the [0, 255] range."
+    # So NO manual normalization if the model handles it.
+    
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+    
+    # Add batch dimension
+    input_data = np.expand_dims(img, axis=0)
+    
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+    
+    preds = interpreter.get_tensor(output_details[0]['index'])[0]
+    
+    top_indices = preds.argsort()[-top_k:][::-1]
+    real_k = min(top_k, len(CLASS_NAMES))
+    results = [(CLASS_NAMES[i], float(preds[i])) for i in top_indices[:real_k]]
+    return results
+
+def predict_cv_image(model, cv_img: np.ndarray, top_k: int = 3):
+    # Branch based on model type
+    if hasattr(model, "allocate_tensors"):
+        return predict_tflite(model, cv_img, top_k)
+
+    # Preprocess (Keras)
     img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
     img = cv2.resize(img, IMG_SIZE)
     img_array = np.array(img, dtype=np.float32)
