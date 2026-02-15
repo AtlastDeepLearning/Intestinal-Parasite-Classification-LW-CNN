@@ -28,7 +28,7 @@ cat <<EOF > "$AUTOSTART_DIR/parasite-classifier.desktop"
 Type=Application
 Name=Parasite Classifier
 Exec=$RUN_SCRIPT
-Path=$HOME/thesis
+Path=$HOME/thesis/thesis
 Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF

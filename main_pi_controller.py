@@ -110,9 +110,20 @@ class CropperApp:
         #   Right: 160x480 Control Panel
         # ---------------------------------------------------------
         
-        self.root.attributes('-fullscreen', True)
-        self.root.geometry("800x480")
+        # AGGRESSIVE CENTERING STRATEGY
+        # 1. Remove window decorations (title bar, borders) entirely
+        self.root.overrideredirect(True) 
+        
+        # 2. Force exact geometry at 0,0
+        self.root.geometry("800x480+0+0")
+        
+        # 3. Force window manager to update
+        self.root.update_idletasks()
+        
         self.root.configure(bg="#121212") # Dark background
+
+        # Bind Escape key to exit (since we have no title bar)
+        self.root.bind("<Escape>", lambda e: self.close_app())
 
         # Main Container (Horizontal Layout)
         main_frame = tk.Frame(self.root, bg="#121212")
@@ -414,11 +425,11 @@ class CropperApp:
 
     def classify_image(self):
         if self.current_image is None:
-            messagebox.showwarning("Warning", "No image to classify!")
+            self.show_custom_popup("Warning", "No image to classify!", is_error=True)
             return
         
         if not self.rect_id:
-            messagebox.showwarning("Warning", "Please draw a crop box first!")
+            self.show_custom_popup("Warning", "Please draw a crop box first!", is_error=True)
             return
 
         try:
@@ -442,8 +453,9 @@ class CropperApp:
                 # Crop from original high-res image
                 roi = self.current_image[real_y:real_y+real_h, real_x:real_x+real_w]
                 
+                
                 if roi.shape[0] == 0 or roi.shape[1] == 0:
-                    messagebox.showerror("Error", "Crop is outside image bounds!")
+                    self.show_custom_popup("Error", "Selected area is empty!", is_error=True)
                     return
 
                 # If crop is smaller than 224 (edge of image), pad it
@@ -455,17 +467,74 @@ class CropperApp:
                 # Predict
                 results = predict_cv_image(self.model, roi, top_k=3)
                 
-                # Show results
-                res_text = "Analysis Results:\n"
-                for i, (name, score) in enumerate(results):
-                     res_text += f"{i+1}. {name}: {score*100:.1f}%\n"
+                # Format Results for large popup
+                top_result = results[0]
+                res_text = f"{top_result[0]}\n{top_result[1]*100:.1f}% Confidence\n\n"
+                
+                # Add secondary results smaller
+                if len(results) > 1:
+                    res_text += "Alternatives:\n"
+                    for i in range(1, len(results)):
+                         res_text += f"{results[i][0]}: {results[i][1]*100:.1f}%\n"
                 
                 self.results_var.set(f"Top: {results[0][0]} ({results[0][1]*100:.1f}%)")
-                messagebox.showinfo("Prediction", res_text)
+                
+                # Show Custom Popup
+                self.show_custom_popup("Analysis Complete", res_text)
 
         except Exception as e:
             traceback.print_exc()
-            messagebox.showerror("Error", f"Classification failed: {e}")
+            self.show_custom_popup("Error", f"Classification failed:\n{e}", is_error=True)
+
+    def show_custom_popup(self, title, message, is_error=False):
+        """
+        Creates a large, touch-friendly overlay popup.
+        """
+        # Create overlay frame (covers everything)
+        overlay = tk.Frame(self.root, bg="#000000")
+        overlay.place(x=0, y=0, relwidth=1, relheight=1)
+        
+        # Container for content (centered)
+        content_frame = tk.Frame(overlay, bg="#1E1E1E", padx=40, pady=40)
+        content_frame.place(relx=0.5, rely=0.5, anchor="center")
+        
+        # Title
+        lbl_title = tk.Label(
+            content_frame, 
+            text=title, 
+            font=("Arial", 24, "bold"), 
+            fg="#FF5252" if is_error else "#00E676",
+            bg="#1E1E1E"
+        )
+        lbl_title.pack(pady=(0, 20))
+        
+        # Message
+        lbl_msg = tk.Label(
+            content_frame, 
+            text=message, 
+            font=("Arial", 18), 
+            fg="white",
+            bg="#1E1E1E",
+            wraplength=600,
+            justify="center"
+        )
+        lbl_msg.pack(pady=(0, 30))
+        
+        # Close Button
+        btn_close = tk.Button(
+            content_frame,
+            text="CLOSE",
+            font=("Arial", 20, "bold"),
+            bg="#2979FF",
+            fg="white",
+            activebackground="#1565C0",
+            activeforeground="white",
+            width=10,
+            height=2,
+            command=overlay.destroy 
+        )
+        btn_close.pack()
+
 
 # ---------------------------
 # Main
@@ -484,7 +553,7 @@ if __name__ == "__main__":
 
     root = tk.Tk()
     root.title("Parasite Classifier (Pi 5)")
-    root.geometry("800x480")
+    root.geometry("800x480+0+0") # Force top-left on init too
 
     app = CropperApp(root, model)
 
