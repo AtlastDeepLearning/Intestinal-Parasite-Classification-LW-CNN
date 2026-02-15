@@ -1,4 +1,0 @@
-customtkinter
-pillow
-numpy<2
-tensorflow<2.16
