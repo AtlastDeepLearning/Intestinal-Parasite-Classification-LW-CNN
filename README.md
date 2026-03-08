@@ -1,11 +1,11 @@
-# 🦠 Intestinal Parasite Classification – Lightweight CNN (EfficientNetB0)
+# Intestinal Parasite Classification – Lightweight CNN (EfficientNetB0)
 
 A lightweight Convolutional Neural Network using **EfficientNetB0** for the classification of intestinal parasite eggs in microscopic images.  
 Designed for **accuracy, efficiency, and deployment on resource-constrained devices** like the Raspberry Pi 5.
 
 ---
 
-## 📌 Overview
+##  Overview
 
 This project tackles the challenge of detecting and classifying intestinal parasites from microscopic stool images.  
 By leveraging **transfer learning** with **EfficientNetB0**, the model achieves **high accuracy** while staying lightweight and efficient.
@@ -19,17 +19,17 @@ By leveraging **transfer learning** with **EfficientNetB0**, the model achieves 
 
 ---
 
-## 🍓 Raspberry Pi 5 Deployment
+## Raspberry Pi 5 Deployment
 
 This application is optimized for the **Raspberry Pi 5** with the **official 7" Touchscreen** (800x480) and **Camera Module 3 / HQ Camera**.
 
-### ✨ Features
+### Features
 
 - **Touch-Friendly UI**: Large buttons, dark mode, and full-screen overlay results.
 - **Autostart**: Automatically launches on boot.
 - **Hardware Accelerated**: Uses `picamera2` for low-latency preview.
 
-### 🛠️ Installation & Setup
+### Installation & Setup
 
 1.  **Clone the Repository**:
 
@@ -56,7 +56,7 @@ This application is optimized for the **Raspberry Pi 5** with the **official 7" 
     ```
     Reboot to test: `sudo reboot`
 
-### 🚀 Usage
+### Usage
 
 **Manual Launch**:
 
@@ -74,7 +74,7 @@ This application is optimized for the **Raspberry Pi 5** with the **official 7" 
 
 ---
 
-## 📂 Dataset Structure
+## Dataset Structure
 
 Microscopic egg images were **resized to 224×224** (EfficientNetB0 input size).  
 Images were first **loaded as grayscale**, then expanded to **3-channel RGB** for compatibility.  
@@ -97,7 +97,7 @@ dataset/
 
 ---
 
-## 📊 Results
+## Results
 
 **Final Test Set (120 images, 30 per class):**
 
@@ -110,15 +110,15 @@ dataset/
 
 **Overall Performance:**
 
-- ✅ Accuracy: **96.7%**
-- ✅ Macro F1-score: **0.97**
-- ✅ Weighted Avg F1-score: **0.97**
+- Accuracy: **96.7%**
+- Macro F1-score: **0.97**
+- Weighted Avg F1-score: **0.97**
 
 ![Confusion Matrix](confusion_matrix.png)
 
 ---
 
-## ❓ Troubleshooting
+## Troubleshooting
 
 **Camera Error: `numpy.dtype size changed`**  
 This is a version mismatch between system `picamera2` and the virtual environment's `numpy`.
